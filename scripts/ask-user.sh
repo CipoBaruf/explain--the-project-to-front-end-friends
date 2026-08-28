@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
-# Ask the user a question via Telegram and wait for their answer.
+# Ask the user a question via Telegram, then return immediately — does NOT wait
+# for the answer. Waiting is owned by scripts/run-agent.sh (the orchestrator that
+# invokes this session), not by this script or by the agent's own tool call: a
+# model choosing to run this in the background and end its turn used to silently
+# abandon the question (headless `claude -p` is single-shot — the process exits
+# the moment the model stops, killing any backgrounded child with it). Now there
+# is nothing to background: call this, then stop. run-agent.sh polls for the
+# reply and resumes this same session once it arrives.
 #
 # Usage: ask-user.sh <issue-number> "question"
-# Prints the answer to stdout; exits non-zero on timeout.
 #
 # How it works: the question is sent to the user's Telegram chat, and the tracking
-# issue is labeled "awaiting-answer" — this is the signal the relay uses to know a
-# plain-text reply should be treated as an answer rather than as unrelated chatter
-# (see auto-flow-relay's isAwaitingAnswer). The user replies in Telegram; the relay
-# posts that reply as a comment starting with "[answer]" on the tracking issue. This
-# script polls for such a comment and clears the label once it finds one (or on
-# timeout), so the window where plain text = answer is exactly this call's lifetime.
+# issue is labeled "awaiting-answer" — this is the signal both the relay and
+# run-agent.sh use to know a reply should be treated as the answer to THIS
+# question. The user replies in Telegram; the relay posts that reply as a comment
+# starting with "[answer]" on the tracking issue. run-agent.sh polls for it and
+# clears the label once found (or on its own timeout).
 #
 # Small-choice questions: if $QUESTION ends with a "[options: A | B | C]" hint (see
 # AGENTS.md, "Asking the user"), this attaches a Telegram inline keyboard — one
@@ -24,18 +29,11 @@
 # as before — plain text, no keyboard — that path is untouched.
 #
 # Needs: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GH_TOKEN (gh CLI auth),
-# GITHUB_REPOSITORY. Optional: ASK_TIMEOUT_MINUTES (default 240).
+# GITHUB_REPOSITORY.
 set -euo pipefail
 
 ISSUE="$1"
 QUESTION="$2"
-TIMEOUT_MINUTES="${ASK_TIMEOUT_MINUTES:-240}"
-POLL_SECONDS=20
-ASKED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-clear_label() {
-  gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label "awaiting-answer" >/dev/null 2>&1 || true
-}
 
 gh label create "awaiting-answer" --repo "$GITHUB_REPOSITORY" --color FBCA04 --force >/dev/null 2>&1 || true
 gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label "awaiting-answer" >/dev/null
@@ -73,19 +71,4 @@ else
     -o /dev/null
 fi
 
-DEADLINE=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
-while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-  ANSWER=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?since=${ASKED_AT}&per_page=100" \
-    --jq '[.[] | select(.body | startswith("[answer]"))] | last | .body // empty' 2>/dev/null || true)
-  if [ -n "$ANSWER" ]; then
-    clear_label
-    ./scripts/notify.sh "✅ [#${ISSUE}] Got your answer, agent is continuing..."
-    printf '%s\n' "${ANSWER#\[answer\]}" | sed 's/^[[:space:]]*//'
-    exit 0
-  fi
-  sleep "$POLL_SECONDS"
-done
-
-clear_label
-echo "ask-user.sh: no answer within ${TIMEOUT_MINUTES} minutes" >&2
-exit 1
+echo "Question sent. Stop here — do not keep working, do not call this again expecting a reply in this turn. You will be resumed automatically once the user answers."
