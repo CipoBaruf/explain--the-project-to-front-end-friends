@@ -1,0 +1,41 @@
+# PR checks: independent test gate + a soft reminder when source changed
+# without any docs update (AGENTS.md / README.md are the agent's memory
+# between cycles — see AGENTS.md "Definition of done").
+name: PR checks
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      - name: Typecheck + tests
+        working-directory: app
+        run: npm run check
+
+  docs-touched:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Warn if src changed but docs did not
+        run: |
+          CHANGED=$(git diff --name-only "origin/${GITHUB_BASE_REF}"...HEAD)
+          if echo "$CHANGED" | grep -q '^app/src/' && ! echo "$CHANGED" | grep -qE '(^|/)(README\.md|AGENTS\.md)$'; then
+            echo "::warning::app/src changed but neither README.md nor AGENTS.md was updated. If this feature changed behavior, structure, or conventions, update the docs."
+          fi

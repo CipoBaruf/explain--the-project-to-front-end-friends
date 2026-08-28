@@ -1,0 +1,91 @@
+# Deploys main to the Cloud Run production service. Only ever triggered explicitly
+# by the relay's /release command (via workflow_dispatch) right after it merges
+# the feature PR — deliberately NOT on push, so that unrelated pushes to main
+# (e.g. maintenance/doc commits) never fire a production deploy.
+name: Deploy production
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      - name: Test gate
+        working-directory: app
+        run: npm run check
+
+      - name: Check GCP config
+        id: gcp_check
+        run: |
+          if [ -z "$GCP_SA_KEY" ]; then
+            echo "::warning::GCP_SA_KEY not set (run scripts/bootstrap.sh) — skipping deploy."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/auth@v2
+        if: steps.gcp_check.outputs.configured == 'true'
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.gcp_check.outputs.configured == 'true'
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        if: steps.gcp_check.outputs.configured == 'true'
+        run: |
+          gcloud run deploy auto-flow-prod \
+            --source app \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --set-env-vars APP_ENV=production \
+            --quiet
+          URL=$(gcloud run services describe auto-flow-prod \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(status.url)')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+
+      - name: Notify success
+        if: steps.gcp_check.outputs.configured == 'true'
+        run: |
+          ./scripts/notify.sh "🟢 Production deployed: ${DEPLOY_URL}"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          ./scripts/notify.sh "🔴 PRODUCTION deploy FAILED for ${GITHUB_REPOSITORY}. See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

@@ -1,0 +1,127 @@
+# The developer agent. Triggered by the local Telegram relay via repository_dispatch.
+#
+# Payload (client_payload):
+#   issue:       tracking issue number (created by the relay)
+#   description: the feature request, or the change feedback
+# Event types:
+#   feature-request  -> start a new feature branch from main
+#   feature-changes  -> continue on the feature branch of that issue
+#
+# Division of labor: the agent (Claude Code) edits code/tests/docs and iterates
+# until `npm run check` passes; this workflow does the mechanical git work
+# (branch, commit, push, PR, staging fast-forward) so runs stay deterministic.
+#
+# Auth: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`, subscription-billed).
+# GH_PAT is a classic PAT with `repo` scope — used instead of GITHUB_TOKEN so that
+# pushes/PRs from this workflow still trigger the other workflows. A fine-grained
+# token scoped to just this repo would be tighter (the agent runs with
+# --dangerously-skip-permissions, so this token is reachable from its bash
+# session), but GitHub's fine-grained permission UI proved unreliable in
+# practice (see SETUP.md); classic is the token that's actually verified working.
+name: Developer agent
+
+on:
+  repository_dispatch:
+    types: [feature-request, feature-changes]
+
+concurrency:
+  group: agent-cycle
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      ISSUE: ${{ github.event.client_payload.issue }}
+      DESCRIPTION: ${{ github.event.client_payload.description }}
+      BRANCH: feat/issue-${{ github.event.client_payload.issue }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Prepare branch
+        # New features branch from the tip of `staging`, not `main`, so staging
+        # accumulates everything requested since the last /release (a "stack").
+        # /release then ships the whole accumulated batch at once. The relay
+        # closes the previous feature's now-superseded PR when a new /feature
+        # request comes in (see auto-flow-relay's bot.command("feature")).
+        run: |
+          git config user.name "auto-flow-agent"
+          git config user.email "agent@users.noreply.github.com"
+          if [ "${{ github.event.action }}" = "feature-changes" ] && git ls-remote --exit-code origin "$BRANCH" >/dev/null 2>&1; then
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -B "$BRANCH" origin/staging
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app deps
+        working-directory: app
+        run: npm ci
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Notify start
+        run: |
+          ./scripts/notify.sh "🤖 Agent started on issue #${ISSUE} (${{ github.event.action }})."
+
+      - name: Run agent
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ "${{ github.event.action }}" = "feature-changes" ]; then
+            TASK="The user tested this feature on staging and requests changes. Apply them on the current branch."
+          else
+            TASK="Implement this new feature request."
+          fi
+          claude -p "$(printf '%s\n\nTracking issue: #%s\nRequest:\n%s\n\nFollow AGENTS.md strictly: implement in app/, add/update tests, iterate until \"npm run check\" passes inside app/, and update README.md / AGENTS.md per the definition of done. If anything is ambiguous, ask the user with: ./scripts/ask-user.sh %s "your question". Do NOT run any git commands; the workflow handles git.' "$TASK" "$ISSUE" "$DESCRIPTION" "$ISSUE")" \
+            --dangerously-skip-permissions
+
+      - name: Verify (independent test gate)
+        working-directory: app
+        run: npm run check
+
+      - name: Commit and push
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Agent produced no changes" && exit 1
+          fi
+          git commit -m "feat: ${DESCRIPTION%%$'\n'*} (#${ISSUE})"
+          git push -u origin "$BRANCH"
+
+      - name: Open PR if missing
+        run: |
+          if ! gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "feat: ${DESCRIPTION%%$'\n'*} (#${ISSUE})" \
+              --body "Closes #${ISSUE}. Developed by the auto-flow agent; review happens on staging via Telegram."
+          fi
+
+      - name: Fast-forward staging to this branch
+        run: git push origin "HEAD:staging" --force
+
+      - name: Trigger staging deploy
+        run: gh workflow run deploy-staging.yml
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          ./scripts/notify.sh "🔴 Agent run FAILED for issue #${ISSUE}. See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
