@@ -25,13 +25,28 @@ const ABOUT_TEXT =
 
 // Rendered once at module load: compileScene() is a pure function of geometry + camera,
 // so this ASCII cube is static HTML, no client-side JS or bundler needed to show it.
-const GLYPH_ART = compileScene({
-  polygons: cubePolygons({ center: [0, 0, 0], size: 4, color: "#8b7cf6" }),
+const CUBE_SCENE = {
+  polygons: cubePolygons({ center: [0, 0, 0], size: 4, color: "#58d854" }),
   camera: createGlyphPerspectiveCamera({ rotX: 60, rotY: 45, zoom: 70 }),
   cols: 34,
   rows: 16,
   autoCenter: true,
-}).html;
+} as const;
+
+// mode: "voxel" is meant to swap the shading model from solid-mode's Lambert-ramp
+// glyphs to cube-aligned face-normal glyph selection -- the blocky look that reads
+// as a voxel, matching the retro 8-bit restyle (see the NES palette tokens in the
+// <style> below). But glyphcss@0.1.5 (the current latest release) renders an empty
+// grid in "voxel" mode for every geometry we tried (this cube, a 3x3x3 voxel
+// cluster, a sphere, a plane) -- an upstream bug, not a usage error, confirmed by
+// wireframe/ink/solid all rendering correctly with identical inputs. Fall back to a
+// wireframe render (per user request, as the closest available blocky/pixel look)
+// whenever voxel comes back blank, so the cube never silently disappears from the
+// page; drop this fallback once upstream fixes voxel mode.
+const voxelAttempt = compileScene({ ...CUBE_SCENE, mode: "voxel" });
+const GLYPH_ART = voxelAttempt.inner.trim()
+  ? voxelAttempt.html
+  : compileScene({ ...CUBE_SCENE, mode: "wireframe" }).html;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char] as string);
@@ -47,17 +62,39 @@ export function renderHomePage(): string {
 <style>
   :root {
     color-scheme: dark;
-    --ink: #e4e7ec;
-    --muted: #8a93a3;
-    --bg: #0a0d12;
-    --card: #10141b;
-    --line: #232833;
-    --accent: #8b7cf6;
-    --accent-dim: #6e5fd1;
-    --accent-2: #52d8c4;
-    --ok: #63c374;
-    --warn: #f4c05d;
-    --err: #f16565;
+    /* Full retro 8-bit / NES PPU palette (authentic hex values). Named tokens below
+       map a curated subset onto the page's semantic roles for the pixel-art restyle. */
+    --nes-black: #000000;
+    --nes-dgray: #7c7c7c;
+    --nes-gray: #bcbcbc;
+    --nes-white: #fcfcfc;
+    --nes-blue: #0000fc;
+    --nes-dblue: #0000bc;
+    --nes-indigo: #4428bc;
+    --nes-purple: #940084;
+    --nes-red: #f83800;
+    --nes-dred: #a81000;
+    --nes-amber: #fca044;
+    --nes-gold: #f8b800;
+    --nes-yellow: #f8d878;
+    --nes-green: #00a800;
+    --nes-lgreen: #58d854;
+    --nes-teal: #008888;
+    --nes-cyan: #00e8d8;
+    --nes-skyblue: #3cbcfc;
+    --nes-magenta: #f878f8;
+    --nes-pink: #f85898;
+    --ink: var(--nes-white);
+    --muted: var(--nes-dgray);
+    --bg: var(--nes-black);
+    --card: #0c0c10;
+    --line: rgba(124, 124, 124, 0.35);
+    --accent: var(--nes-cyan);
+    --accent-dim: var(--nes-teal);
+    --accent-2: var(--nes-magenta);
+    --ok: var(--nes-lgreen);
+    --warn: var(--nes-gold);
+    --err: var(--nes-red);
     --mono: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
@@ -67,8 +104,15 @@ export function renderHomePage(): string {
     padding: 4rem 1.5rem 3rem;
     background: var(--bg);
     background-image:
-      radial-gradient(circle at 15% 0%, rgba(139, 124, 246, 0.08), transparent 45%),
-      radial-gradient(circle at 85% 100%, rgba(82, 216, 196, 0.06), transparent 45%);
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.025) 0px,
+        rgba(255, 255, 255, 0.025) 1px,
+        transparent 1px,
+        transparent 3px
+      ),
+      radial-gradient(circle at 15% 0%, rgba(0, 232, 216, 0.08), transparent 45%),
+      radial-gradient(circle at 85% 100%, rgba(248, 120, 248, 0.07), transparent 45%);
     color: var(--ink);
     font-family: var(--sans);
     display: flex;
@@ -90,11 +134,19 @@ export function renderHomePage(): string {
     white-space: pre;
     display: inline-block;
     width: 100%;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    background: linear-gradient(
+      100deg,
+      var(--nes-red) 0%,
+      var(--nes-gold) 20%,
+      var(--nes-lgreen) 40%,
+      var(--nes-cyan) 60%,
+      var(--nes-skyblue) 80%,
+      var(--nes-magenta) 100%
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    filter: drop-shadow(0 0 14px rgba(139, 124, 246, 0.35));
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85);
   }
   .banner-wrap {
     overflow-x: auto;
@@ -103,7 +155,7 @@ export function renderHomePage(): string {
   .divider {
     text-align: center;
     font-family: var(--mono);
-    color: var(--line);
+    color: var(--muted);
     letter-spacing: 0.3em;
     font-size: 0.7rem;
     margin: 0 0 1.6rem;
@@ -122,10 +174,13 @@ export function renderHomePage(): string {
   section.card {
     position: relative;
     background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 10px;
+    border: 2px solid var(--line);
+    border-radius: 0;
     padding: 1.75rem;
     margin-bottom: 2.5rem;
+    box-shadow:
+      inset 2px 2px 0 rgba(255, 255, 255, 0.06),
+      inset -2px -2px 0 rgba(0, 0, 0, 0.5);
   }
   section.card::before,
   section.card::after {
@@ -133,22 +188,20 @@ export function renderHomePage(): string {
     position: absolute;
     width: 0.85rem;
     height: 0.85rem;
-    border: 1px solid var(--accent-dim);
-    opacity: 0.6;
+    border: 2px solid var(--accent);
+    opacity: 0.85;
   }
   section.card::before {
-    top: -1px;
-    left: -1px;
+    top: -2px;
+    left: -2px;
     border-right: none;
     border-bottom: none;
-    border-top-left-radius: 4px;
   }
   section.card::after {
-    bottom: -1px;
-    right: -1px;
+    bottom: -2px;
+    right: -2px;
     border-left: none;
     border-top: none;
-    border-bottom-right-radius: 4px;
   }
   section.terminal {
     padding: 0;
@@ -165,7 +218,7 @@ export function renderHomePage(): string {
   .terminal-bar .dot {
     width: 0.6rem;
     height: 0.6rem;
-    border-radius: 50%;
+    border-radius: 0;
     background: var(--line);
   }
   .terminal-bar .dot-red { background: var(--err); }
@@ -175,6 +228,8 @@ export function renderHomePage(): string {
     margin-left: 0.25rem;
     font-family: var(--mono);
     font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
     color: var(--muted);
   }
   .terminal-body {
@@ -229,7 +284,7 @@ export function renderHomePage(): string {
 <body>
   <main>
     <div class="banner-wrap"><pre class="banner">${BANNER}</pre></div>
-    <p class="divider">◆ ─────────────────────────────── ◆</p>
+    <p class="divider">▓▒░ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬ ░▒▓</p>
     <p class="prompt">
       <span class="prompt-arrow">&#10148;</span>
       <span class="prompt-dir">auto-flow-app</span>

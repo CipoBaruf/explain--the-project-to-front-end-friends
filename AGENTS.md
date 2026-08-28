@@ -94,26 +94,47 @@ text) — those still work as plain text replies exactly as before.
   static assets pipeline.
 - Current state: `GET /` renders an HTML landing page with a large multi-line figlet-style
   ASCII wordmark spelling "AUTO" / "FLOW" (block-letter art in a `<pre class="banner">`,
-  gradient-colored via CSS `background-clip: text`), a decorative ASCII divider, an
-  oh-my-zsh-style prompt line (`➜ auto-flow-app git:(main) ✗`), and a single terminal-styled
-  card (HUD corner accents, fake terminal title bar titled `about.md`) whose body is a
-  static ASCII cube rendered server-side by the `glyphcss` npm package (`compileScene` +
-  `cubePolygons` from `homePage.ts`, computed once at module load — pure function of
-  geometry + camera, so it's plain `<pre class="glyph-output">` HTML with inline colors,
-  no client-side JS or bundler involved) followed by a short plain-English paragraph
-  (`.about-text`) summarizing what the project does, for readers unfamiliar with the repo.
-  This replaced the earlier `CHAT` log (László Bende / Ezequiel exchange) per issue #1
-  feedback ("replace the / route ... just a quick summary of the objective of the
-  project"). Footer still credits Ezequiel with a link to `https://github.com/cipoBaruf`
-  plus a link to this repo, `https://github.com/CipoBaruf/auto-flow-template/`;
-  `GET /health` returns JSON status + environment. No database.
+  gradient-colored via CSS `background-clip: text`), a decorative pixel-dither ASCII
+  divider, an oh-my-zsh-style prompt line (`➜ auto-flow-app git:(main) ✗`), and a single
+  terminal-styled card (hard-edged pixel corner accents, fake terminal title bar titled
+  `about.md`) whose body is a static ASCII cube rendered server-side by the `glyphcss` npm
+  package (`compileScene` + `cubePolygons` from `homePage.ts`, computed once at module
+  load — pure function of geometry + camera, so it's plain `<pre class="glyph-output">`
+  HTML with inline colors, no client-side JS or bundler involved) followed by a short
+  plain-English paragraph (`.about-text`) summarizing what the project does, for readers
+  unfamiliar with the repo. This replaced the earlier `CHAT` log (László Bende / Ezequiel
+  exchange) per issue #1 feedback ("replace the / route ... just a quick summary of the
+  objective of the project"). Footer still credits Ezequiel with a link to
+  `https://github.com/cipoBaruf` plus a link to this repo,
+  `https://github.com/CipoBaruf/auto-flow-template/`; `GET /health` returns JSON status +
+  environment. No database.
 - `glyphcss` is a real, fairly new (single-maintainer) npm package for rendering 3D
   polygon meshes as ASCII art; only its pure, DOM-free `compileScene`/`cubePolygons`
   Node API is used here (see https://glyphcss.com). It was added to `dependencies`
   (not `devDependencies`) because `homePage.ts` calls it at module load, which runs
   in the request path.
-- Styling: dark, clean theme (near-black background, violet `--accent` + teal
-  `--accent-2`, no orange) in the spirit of render.com/oh-my-zsh terminal splash
-  screens — big gradient ASCII wordmarks, terminal/HUD framing, monospace accents —
-  keep it that way for any future `/` changes. The banner text is built letter-by-letter
-  from fixed-width ASCII-art glyphs; verify line lengths stay aligned if you change it.
+- **Known upstream bug — glyphcss `mode: "voxel"` renders empty**: the installed
+  `glyphcss@0.1.5` (the latest published release as of this writing) returns a blank grid
+  for `compileScene({ ..., mode: "voxel" })` for every geometry tested (the homepage cube,
+  a 3x3x3 voxel cluster, a sphere, a plane) while `wireframe`/`ink`/`solid` all render
+  correctly with identical inputs — this is a library bug, not a usage error.
+  `homePage.ts` works around it: it attempts `mode: "voxel"` first and falls back to a
+  `wireframe` render (user's chosen stand-in for the blocky/pixel look, picked over
+  `solid` after asking via issue #1) whenever the voxel attempt's `inner` output is
+  blank, so the cube never disappears from the page. `test/app.test.ts` pins this bug
+  with an assertion that will fail loudly (signalling the fallback can be dropped) once
+  a glyphcss upgrade fixes it. Re-check `npm view glyphcss version` on future cycles
+  that touch the cube. Note `wireframe` mode's glyph selection is non-deterministic
+  across `compileScene()` calls even with byte-identical input (confirmed empirically,
+  30 consecutive calls each produced a different render) — since `GLYPH_ART` is computed
+  once at module load, this means the exact cube art differs between process restarts
+  (deploys), not just between requests within one running process. Tests key off the
+  wireframe rule-glyph character set, not exact string matches, to stay stable under this.
+- Styling: dark, retro 8-bit/NES palette (see the `--nes-*` CSS custom properties in
+  `homePage.ts` for the full curated palette — authentic NES PPU hex values covering
+  black/white/grays, red, gold, greens, cyan/teal/skyblue, and magenta/pink; no orange) in
+  the spirit of arcade splash screens and pixel-art UI — rainbow-gradient ASCII wordmark,
+  hard 0-radius edges, pixel corner accents, beveled terminal card, blocky square status
+  dots — keep it that way for any future `/` changes. The banner text is built
+  letter-by-letter from fixed-width ASCII-art glyphs; verify line lengths stay aligned if
+  you change it.

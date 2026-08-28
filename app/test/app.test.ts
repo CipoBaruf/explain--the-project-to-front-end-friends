@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
+import { compileScene, createGlyphPerspectiveCamera, cubePolygons } from "glyphcss";
 import { createApp } from "../src/app.js";
 
 describe("baseline app", () => {
@@ -60,5 +61,42 @@ describe("baseline app", () => {
     const res = await request(createApp()).get("/");
     expect(res.text).toContain("class=\"glyph-output\"");
     expect(res.text).toMatch(/<span style="color:#[0-9a-f]{6}">/i);
+  });
+
+  it("GET / uses a full retro 8-bit / NES color palette", async () => {
+    const res = await request(createApp()).get("/");
+    expect(res.text).toMatch(/#f83800/i); // NES red
+    expect(res.text).toMatch(/#00e8d8/i); // NES cyan
+    expect(res.text).toMatch(/#f878f8/i); // NES magenta
+    expect(res.text).toMatch(/#58d854/i); // NES light green
+    // Retired from the earlier violet/teal terminal theme.
+    expect(res.text).not.toContain("#8b7cf6");
+    expect(res.text).not.toContain("#52d8c4");
+  });
+
+  it("GET / falls back to a wireframe cube, since glyphcss's voxel mode currently renders empty for this geometry", async () => {
+    // Pins the upstream glyphcss@0.1.5 bug the app works around: "voxel" mode renders
+    // an empty grid for this cube. If a glyphcss upgrade fixes this, this assertion
+    // will fail loudly as a signal to drop the fallback in src/homePage.ts.
+    const cubeScene = {
+      polygons: cubePolygons({ center: [0, 0, 0] as const, size: 4, color: "#58d854" }),
+      camera: createGlyphPerspectiveCamera({ rotX: 60, rotY: 45, zoom: 70 }),
+      cols: 34,
+      rows: 16,
+      autoCenter: true,
+    };
+    const voxelAttempt = compileScene({ ...cubeScene, mode: "voxel" as const });
+    expect(voxelAttempt.inner.trim()).toBe("");
+
+    // Despite that, the served page must still show the wireframe fallback render
+    // (user's chosen stand-in for the still-broken voxel mode), not a blank cube.
+    // Wireframe glyph selection isn't deterministic across compileScene() calls with
+    // identical input (confirmed empirically), so this checks for wireframe's
+    // rule-glyph character set rather than an exact string match -- that set is
+    // disjoint from solid mode's density-ramp characters (e.g. "@", "%").
+    const res = await request(createApp()).get("/");
+    const glyphMatch = res.text.match(/<pre class="glyph-output">([\s\S]*?)<\/pre>/);
+    expect(glyphMatch).not.toBeNull();
+    expect(glyphMatch?.[1]).toMatch(/[◈◊╬⊥∵┼⬢⬡⊗⊛⊕▲▽╳╋▼△◇◆∴⊚⊙]/);
   });
 });

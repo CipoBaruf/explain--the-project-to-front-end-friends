@@ -42,12 +42,12 @@ in chat instead of a wasted agent run — every step also works as plain text. S
 ## The app (`app/`)
 
 Baseline placeholder the agent grows feature by feature: Node 24 + TypeScript + Express,
-Vitest tests. Endpoints: `GET /` (dark-themed HTML landing page with a large gradient
-figlet-style ASCII wordmark, an oh-my-zsh-style prompt line, and a terminal-styled card
-showing a static ASCII cube — rendered server-side with the `glyphcss` package, no
-client-side JS — alongside a short plain-English summary of what the project does, plus
-a footer with the author's GitHub link and a link to this repo), `GET /health` (status +
-environment).
+Vitest tests. Endpoints: `GET /` (dark, retro 8-bit/NES-palette HTML landing page with a
+rainbow-gradient figlet-style ASCII wordmark, an oh-my-zsh-style prompt line, and a
+terminal-styled card showing a static ASCII cube — rendered server-side with the
+`glyphcss` package, no client-side JS — alongside a short plain-English summary of what
+the project does, plus a footer with the author's GitHub link and a link to this repo),
+`GET /health` (status + environment).
 
 ```bash
 cd app && npm install && npm run dev     # local dev on :3000
