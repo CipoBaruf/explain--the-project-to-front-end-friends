@@ -62,7 +62,16 @@ jobs:
         id: deploy
         if: steps.gcp_check.outputs.configured == 'true'
         run: |
-          gcloud run deploy auto-flow-staging \
+          # Service name is derived from the repo, not hardcoded — a fixed name
+          # ("auto-flow-staging") collides and overwrites another project's service
+          # the moment two repos share the same GCP project (a real incident: this
+          # project's deploy clobbered auto-flow-template's staging service before
+          # this fix). Cloud Run service names must be lowercase letters/digits/
+          # hyphens, start with a letter, ≤63 chars.
+          REPO_SLUG=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//' | cut -c1-40)
+          SERVICE_NAME="${REPO_SLUG}-staging"
+
+          gcloud run deploy "$SERVICE_NAME" \
             --source app \
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
@@ -70,7 +79,7 @@ jobs:
             --min-instances 0 \
             --set-env-vars APP_ENV=staging \
             --quiet
-          URL=$(gcloud run services describe auto-flow-staging \
+          URL=$(gcloud run services describe "$SERVICE_NAME" \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --format='value(status.url)')
           echo "url=$URL" >> "$GITHUB_OUTPUT"

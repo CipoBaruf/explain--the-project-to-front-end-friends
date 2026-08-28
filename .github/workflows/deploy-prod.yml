@@ -57,7 +57,11 @@ jobs:
         id: deploy
         if: steps.gcp_check.outputs.configured == 'true'
         run: |
-          gcloud run deploy auto-flow-prod \
+          # See deploy-staging.yml for why this is derived, not hardcoded.
+          REPO_SLUG=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//' | cut -c1-40)
+          SERVICE_NAME="${REPO_SLUG}-prod"
+
+          gcloud run deploy "$SERVICE_NAME" \
             --source app \
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
@@ -65,7 +69,7 @@ jobs:
             --min-instances 0 \
             --set-env-vars APP_ENV=production \
             --quiet
-          URL=$(gcloud run services describe auto-flow-prod \
+          URL=$(gcloud run services describe "$SERVICE_NAME" \
             --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
             --format='value(status.url)')
           echo "url=$URL" >> "$GITHUB_OUTPUT"
