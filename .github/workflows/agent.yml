@@ -91,7 +91,7 @@ jobs:
           else
             TASK="Implement this new feature request."
           fi
-          claude -p "$(printf '%s\n\nTracking issue: #%s\nRequest:\n%s\n\nFollow AGENTS.md strictly: implement in app/, add/update tests, iterate until \"npm run check\" passes inside app/, and update README.md / AGENTS.md per the definition of done. If anything is ambiguous, ask the user with: ./scripts/ask-user.sh %s "your question". Do NOT run any git commands; the workflow handles git.' "$TASK" "$ISSUE" "$DESCRIPTION" "$ISSUE")" \
+          claude -p "$(printf '%s\n\nTracking issue: #%s\nRequest:\n%s\n\nFollow AGENTS.md strictly: implement in app/, add/update tests, iterate until \"npm run check\" passes inside app/, and update README.md / AGENTS.md per the definition of done. If anything is ambiguous, ask the user with: ./scripts/ask-user.sh %s "your question" -- run it as a normal FOREGROUND command and wait for it to return. Never background it: this is a single-shot session with no later turn to resume in, so backgrounding it kills the wait the moment you stop and silently abandons the question. Do NOT run any git commands; the workflow handles git.' "$TASK" "$ISSUE" "$DESCRIPTION" "$ISSUE")" \
             --dangerously-skip-permissions
 
       - name: Verify (independent test gate)

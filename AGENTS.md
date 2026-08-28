@@ -37,6 +37,14 @@ When the request is ambiguous or a decision is genuinely the user's to make, ask
 ./scripts/ask-user.sh <issue-number> "your question"
 ```
 
+**Run this as a normal, blocking foreground command — never in the background.**
+This is a single-shot headless session (`claude -p` in a GitHub Actions step): once
+you stop and return, the whole process exits immediately, killing any backgrounded
+child process with it. There is no later turn for a background-task notification to
+wake you into — unlike an interactive session, backgrounding this command silently
+abandons the question and the run produces no changes. Call it directly and wait for
+it to return the answer before doing anything else.
+
 It blocks until the user answers on Telegram and prints the answer to stdout.
 Ask few, batched, concrete questions. Prefer sensible defaults over asking; never
 guess on scope ("should this endpoint be public?") — ask.
