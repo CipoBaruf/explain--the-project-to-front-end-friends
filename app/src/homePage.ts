@@ -1,3 +1,5 @@
+import { compileScene, createGlyphPerspectiveCamera, cubePolygons } from "glyphcss";
+
 const BANNER = String.raw`
  █████╗ ██╗   ██╗████████╗ ██████╗
 ██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗
@@ -16,20 +18,23 @@ const BANNER = String.raw`
 
 const REPO_URL = "https://github.com/CipoBaruf/auto-flow-template/";
 
-const CHAT = [
-  { from: "laszlo", name: "László Bende", lines: ["Hey guuuys", "How your days going?"] },
-  { from: "me", name: "Ezequiel", lines: ["Hey! All good here — I'm working on this project."] },
-] as const;
+const ABOUT_TEXT =
+  "auto-flow-app is the demo project for a fully automated dev loop: you ask for a " +
+  "feature in chat, a coding agent writes it — code, tests, and docs — and ships it " +
+  "to a staging preview for you to try. Nothing reaches production until you say go.";
+
+// Rendered once at module load: compileScene() is a pure function of geometry + camera,
+// so this ASCII cube is static HTML, no client-side JS or bundler needed to show it.
+const GLYPH_ART = compileScene({
+  polygons: cubePolygons({ center: [0, 0, 0], size: 4, color: "#8b7cf6" }),
+  camera: createGlyphPerspectiveCamera({ rotX: 60, rotY: 45, zoom: 70 }),
+  cols: 34,
+  rows: 16,
+  autoCenter: true,
+}).html;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char] as string);
-}
-
-function renderChatLog(): string {
-  return CHAT.map(({ from, name, lines }) => {
-    const body = lines.map((line) => escapeHtml(line)).join("\n  ");
-    return `<span class="chat-name chat-${from}">${escapeHtml(name)}:</span>\n  ${body}`;
-  }).join("\n\n");
 }
 
 export function renderHomePage(): string {
@@ -172,20 +177,30 @@ export function renderHomePage(): string {
     font-size: 0.78rem;
     color: var(--muted);
   }
-  pre.terminal-body {
+  .terminal-body {
     margin: 0;
     padding: 1.25rem 1.5rem;
     font-family: var(--mono);
     font-size: 0.82rem;
     line-height: 1.6;
     color: var(--ink);
+  }
+  .glyph-wrap {
+    text-align: center;
+    margin: 0 0 1.25rem;
     overflow-x: auto;
   }
-  .chat-name {
-    font-weight: 700;
+  pre.glyph-output {
+    display: inline-block;
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    line-height: 1.15;
   }
-  .chat-laszlo { color: var(--accent-2); }
-  .chat-me { color: var(--accent); }
+  .about-text {
+    margin: 0;
+    color: var(--ink);
+  }
   footer {
     text-align: center;
     font-size: 0.85rem;
@@ -226,9 +241,12 @@ export function renderHomePage(): string {
         <span class="dot dot-red"></span>
         <span class="dot dot-yellow"></span>
         <span class="dot dot-green"></span>
-        <span class="terminal-title">chat</span>
+        <span class="terminal-title">about.md</span>
       </div>
-      <pre class="terminal-body">${renderChatLog()}</pre>
+      <div class="terminal-body">
+        <div class="glyph-wrap">${GLYPH_ART}</div>
+        <p class="about-text">${escapeHtml(ABOUT_TEXT)}</p>
+      </div>
     </section>
     <footer>
       <p class="rule">· · · · · · · · · · · · · · · · · · ·</p>

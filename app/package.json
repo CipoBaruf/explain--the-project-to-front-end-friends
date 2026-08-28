@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
+    "glyphcss": "^0.1.5",
     "tsx": "^4.19.0"
   },
   "devDependencies": {

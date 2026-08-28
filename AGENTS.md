@@ -97,15 +97,22 @@ text) — those still work as plain text replies exactly as before.
   ASCII wordmark spelling "AUTO" / "FLOW" (block-letter art in a `<pre class="banner">`,
   gradient-colored via CSS `background-clip: text`), a decorative ASCII divider, an
   oh-my-zsh-style prompt line (`➜ auto-flow-app git:(main) ✗`), and a single terminal-styled
-  card (HUD corner accents, fake terminal title bar) rendering a `CHAT` log from
-  `homePage.ts` — László Bende's message ("Hey guuuys" / "How your days going?") answered
-  with a reply that Ezequiel is working on this project (`.chat-laszlo` / `.chat-me`
-  classes color the two speakers). No more steps list, tagline, or "about.json" project-info
-  block — those were removed per issue #17 ("remove all the texts ... add a text to answer
-  this [message]"), the banner/divider/prompt were kept as page chrome, not prose. Footer
-  still credits Ezequiel with a link to `https://github.com/cipoBaruf` plus a link to this
-  repo, `https://github.com/CipoBaruf/auto-flow-template/`; `GET /health` returns JSON
-  status + environment. No database.
+  card (HUD corner accents, fake terminal title bar titled `about.md`) whose body is a
+  static ASCII cube rendered server-side by the `glyphcss` npm package (`compileScene` +
+  `cubePolygons` from `homePage.ts`, computed once at module load — pure function of
+  geometry + camera, so it's plain `<pre class="glyph-output">` HTML with inline colors,
+  no client-side JS or bundler involved) followed by a short plain-English paragraph
+  (`.about-text`) summarizing what the project does, for readers unfamiliar with the repo.
+  This replaced the earlier `CHAT` log (László Bende / Ezequiel exchange) per issue #1
+  feedback ("replace the / route ... just a quick summary of the objective of the
+  project"). Footer still credits Ezequiel with a link to `https://github.com/cipoBaruf`
+  plus a link to this repo, `https://github.com/CipoBaruf/auto-flow-template/`;
+  `GET /health` returns JSON status + environment. No database.
+- `glyphcss` is a real, fairly new (single-maintainer) npm package for rendering 3D
+  polygon meshes as ASCII art; only its pure, DOM-free `compileScene`/`cubePolygons`
+  Node API is used here (see https://glyphcss.com). It was added to `dependencies`
+  (not `devDependencies`) because `homePage.ts` calls it at module load, which runs
+  in the request path.
 - Styling: dark, clean theme (near-black background, violet `--accent` + teal
   `--accent-2`, no orange) in the spirit of render.com/oh-my-zsh terminal splash
   screens — big gradient ASCII wordmarks, terminal/HUD framing, monospace accents —
